@@ -183,7 +183,7 @@ Status ReadFooterFromFile(RandomAccessFileReader* file,
 static const size_t kBlockTrailerSize = 5;
 
 struct BlockContents {
-  Slice data;           // Actual contents of data
+  Slice data;           // Actual contents of data          entrys restarts num_of_restarts (NOT include trailer?)
   bool cachable;        // True iff data can be cached
   CompressionType compression_type;
   std::unique_ptr<char[]> allocation;

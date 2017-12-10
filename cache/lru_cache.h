@@ -125,6 +125,7 @@ class LRUHandleTable {
   LRUHandle* Insert(LRUHandle* h);
   LRUHandle* Remove(const Slice& key, uint32_t hash);
 
+  //对表中的每个元素都执行函数func
   template <typename T>
   void ApplyToAllCacheEntries(T func) {
     for (uint32_t i = 0; i < length_; i++) {
@@ -139,6 +140,7 @@ class LRUHandleTable {
   }
 
  private:
+  // 找到节点，没找到是返回所在通的尾节点
   // Return a pointer to slot that points to a cache entry that
   // matches key/hash.  If there is no such cache entry, return a
   // pointer to the trailing slot in the corresponding linked list.
@@ -148,9 +150,9 @@ class LRUHandleTable {
 
   // The table consists of an array of buckets where each bucket is
   // a linked list of cache entries that hash into the bucket.
-  LRUHandle** list_;
+  LRUHandle** list_;        //length_长的桶数组，每个“桶”是一个链表(开链法解决冲突)
   uint32_t length_;
-  uint32_t elems_;
+  uint32_t elems_;          //?
 };
 
 // A single shard of sharded cache.

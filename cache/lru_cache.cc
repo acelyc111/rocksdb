@@ -27,7 +27,7 @@ LRUHandleTable::LRUHandleTable() : list_(nullptr), length_(0), elems_(0) {
 }
 
 LRUHandleTable::~LRUHandleTable() {
-  ApplyToAllCacheEntries([](LRUHandle* h) {
+  ApplyToAllCacheEntries([](LRUHandle* h) { //lamda函数，释放引用计数，并尝试释放元素
     if (h->refs == 1) {
       h->Free();
     }
@@ -35,60 +35,69 @@ LRUHandleTable::~LRUHandleTable() {
   delete[] list_;
 }
 
+//查找
 LRUHandle* LRUHandleTable::Lookup(const Slice& key, uint32_t hash) {
   return *FindPointer(key, hash);
 }
 
+//插入（均衡系数>1就会开始resize）
 LRUHandle* LRUHandleTable::Insert(LRUHandle* h) {
   LRUHandle** ptr = FindPointer(h->key(), h->hash);
   LRUHandle* old = *ptr;
-  h->next_hash = (old == nullptr ? nullptr : old->next_hash);
-  *ptr = h;
-  if (old == nullptr) {
+  h->next_hash = (old == nullptr ? nullptr : old->next_hash);   //nullptr为开链末尾
+  *ptr = h;     //更新节点
+  if (old == nullptr) {     //新增节点
     ++elems_;
     if (elems_ > length_) {
       // Since each cache entry is fairly large, we aim for a small
       // average linked list length (<= 1).
-      Resize();
+      Resize();             //! 此处insert会引起resize（rehash）
     }
   }
   return old;
 }
 
+//删除（删除不会引起resize）
 LRUHandle* LRUHandleTable::Remove(const Slice& key, uint32_t hash) {
   LRUHandle** ptr = FindPointer(key, hash);
   LRUHandle* result = *ptr;
-  if (result != nullptr) {
-    *ptr = result->next_hash;
+  if (result != nullptr) {  //找到节点
+    *ptr = result->next_hash;   //“删除”节点
     --elems_;
   }
   return result;
 }
 
+//没找到时，返回开链末尾
 LRUHandle** LRUHandleTable::FindPointer(const Slice& key, uint32_t hash) {
-  LRUHandle** ptr = &list_[hash & (length_ - 1)];
-  while (*ptr != nullptr && ((*ptr)->hash != hash || key != (*ptr)->key())) {
+  LRUHandle** ptr = &list_[hash & (length_ - 1)];           //找到桶
+  while (*ptr != nullptr &&                                 //遍历开链
+          ((*ptr)->hash != hash || key != (*ptr)->key())) { //hash相等，且key相等
     ptr = &(*ptr)->next_hash;
   }
   return ptr;
 }
 
+//初始化，或扩展size
 void LRUHandleTable::Resize() {
-  uint32_t new_length = 16;
-  while (new_length < elems_ * 1.5) {
+  uint32_t new_length = 16;                                 //初始长度为16
+  while (new_length < elems_ * 1.5) {                       //1.5x的系数增长
     new_length *= 2;
   }
-  LRUHandle** new_list = new LRUHandle*[new_length];
+  LRUHandle** new_list = new LRUHandle*[new_length];        //新建hash表
   memset(new_list, 0, sizeof(new_list[0]) * new_length);
+
   uint32_t count = 0;
-  for (uint32_t i = 0; i < length_; i++) {
+  for (uint32_t i = 0; i < length_; i++) {                  //每个桶
     LRUHandle* h = list_[i];
-    while (h != nullptr) {
-      LRUHandle* next = h->next_hash;
+    while (h != nullptr) {                                  //每个链表元素。h为当前处理的节点
+      LRUHandle* next = h->next_hash;                       //找到下一个数据节点
       uint32_t hash = h->hash;
-      LRUHandle** ptr = &new_list[hash & (new_length - 1)];
-      h->next_hash = *ptr;
+      LRUHandle** ptr = &new_list[hash & (new_length - 1)]; //找到扩展后的桶的开链
+
+      h->next_hash = *ptr;                                  //单链表，将节点h放到开链[起点]
       *ptr = h;
+
       h = next;
       count++;
     }

@@ -25,14 +25,15 @@ namespace rocksdb {
 
 class InternalKey;
 
+// 各是在什么时候使用的？
 // Value types encoded as the last component of internal keys.
 // DO NOT CHANGE THESE ENUM VALUES: they are embedded in the on-disk
 // data structures.
 // The highest bit of the value type needs to be reserved to SST tables
 // for them to do more flexible encoding.
 enum ValueType : unsigned char {
-  kTypeDeletion = 0x0,
-  kTypeValue = 0x1,
+  kTypeDeletion = 0x0,                                      //删除操作
+  kTypeValue = 0x1,                                         //kv
   kTypeMerge = 0x2,
   kTypeLogData = 0x3,               // WAL only.
   kTypeColumnFamilyDeletion = 0x4,  // WAL only.
@@ -239,16 +240,17 @@ inline int InternalKeyComparator::Compare(
   return Compare(a.Encode(), b.Encode());
 }
 
+//从Slice中解析出ParsedInternalKey
 inline bool ParseInternalKey(const Slice& internal_key,
                              ParsedInternalKey* result) {
   const size_t n = internal_key.size();
-  if (n < 8) return false;
+  if (n < 8) return false;                                      //8 Bytes = ParsedInternalKey: SequenceNumber + ValueType
   uint64_t num = DecodeFixed64(internal_key.data() + n - 8);
   unsigned char c = num & 0xff;
-  result->sequence = num >> 8;
-  result->type = static_cast<ValueType>(c);
+  result->sequence = num >> 8;                                  //SequenceNumber
+  result->type = static_cast<ValueType>(c);                     //ValueType
   assert(result->type <= ValueType::kMaxValue);
-  result->user_key = Slice(internal_key.data(), n - 8);
+  result->user_key = Slice(internal_key.data(), n - 8);         //Slice user_key
   return IsExtendedValueType(result->type);
 }
 

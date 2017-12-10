@@ -275,7 +275,7 @@ Status CheckBlockChecksum(const ReadOptions& options, const Footer& footer,
   if (options.verify_checksums) {
     const char* data = contents.data();  // Pointer to where Read put the data
     PERF_TIMER_GUARD(block_checksum_time);
-    uint32_t value = DecodeFixed32(data + block_size + 1);
+    uint32_t value = DecodeFixed32(data + block_size + 1);  // block_size:records + restarts | 1:compre type | 4:crc bytes
     uint32_t actual = 0;
     switch (footer.checksum()) {
       case kNoChecksum:
@@ -312,26 +312,31 @@ Status CheckBlockChecksum(const ReadOptions& options, const Footer& footer,
 Status ReadBlock(RandomAccessFileReader* file, const Footer& footer,
                  const ReadOptions& options, const BlockHandle& handle,
                  Slice* contents, /* result of reading */ char* buf) {
+  //需要读取的records + restarts 部分长度
   size_t n = static_cast<size_t>(handle.size());
   Status s;
 
   {
     PERF_TIMER_GUARD(block_read_time);
-    s = file->Read(handle.offset(), n + kBlockTrailerSize, contents, buf);
+    s = file->Read(handle.offset(), n + kBlockTrailerSize, contents, buf);  //需要加上kBlockTrailerSize，以便校验数据
   }
 
   PERF_COUNTER_ADD(block_read_count, 1);
   PERF_COUNTER_ADD(block_read_byte, n + kBlockTrailerSize);
 
+  //读取错误
   if (!s.ok()) {
     return s;
   }
+
+  //读取size错误
   if (contents->size() != n + kBlockTrailerSize) {
     return Status::Corruption("truncated block read from " + file->file_name() +
                               " offset " + ToString(handle.offset()) +
                               ", expected " + ToString(n + kBlockTrailerSize) +
                               " bytes, got " + ToString(contents->size()));
   }
+  //校验数据
   return CheckBlockChecksum(options, footer, *contents, n, file, handle);
 }
 
@@ -353,6 +358,7 @@ Status ReadBlockContents(RandomAccessFileReader* file,
   char* used_buf = nullptr;
   rocksdb::CompressionType compression_type;
 
+  //先尝试从缓存（数据未压缩）中读取数据
   if (cache_options.persistent_cache &&
       !cache_options.persistent_cache->IsCompressed()) {
     status = PersistentCacheHelper::LookupUncompressedPage(cache_options,
@@ -371,6 +377,7 @@ Status ReadBlockContents(RandomAccessFileReader* file,
     }
   }
 
+  //再从？缓存中尝试读取？
   bool got_from_prefetch_buffer = false;
   if (prefetch_buffer != nullptr &&
       prefetch_buffer->TryReadFromCache(
@@ -384,6 +391,7 @@ Status ReadBlockContents(RandomAccessFileReader* file,
     }
     got_from_prefetch_buffer = true;
     used_buf = const_cast<char*>(slice.data());
+  //再从？缓存中尝试读取？
   } else if (cache_options.persistent_cache &&
              cache_options.persistent_cache->IsCompressed()) {
     // lookup uncompressed cache mode p-cache
@@ -416,11 +424,12 @@ Status ReadBlockContents(RandomAccessFileReader* file,
         used_buf = heap_buf.get();
       }
 
+      //最后直接从文件中读取
       status = ReadBlock(file, footer, read_options, handle, &slice, used_buf);
       if (status.ok() && read_options.fill_cache &&
           cache_options.persistent_cache &&
           cache_options.persistent_cache->IsCompressed()) {
-        // insert to raw cache
+        // insert to raw cache      更新raw缓存
         PersistentCacheHelper::InsertRawPage(cache_options, handle, used_buf,
                                              n + kBlockTrailerSize);
       }
@@ -435,14 +444,17 @@ Status ReadBlockContents(RandomAccessFileReader* file,
 
   compression_type = static_cast<rocksdb::CompressionType>(slice.data()[n]);
 
+  //解压数据
   if (decompression_requested && compression_type != kNoCompression) {
     // compressed page, uncompress, update cache
     status = UncompressBlockContents(slice.data(), n, contents,
                                      footer.version(), compression_dict,
                                      ioptions);
+  //使用slice生成结果
   } else if (slice.data() != used_buf) {
     // the slice content is not the buffer provided
     *contents = BlockContents(Slice(slice.data(), n), false, compression_type);
+  //使用used_buf生成结果
   } else {
     // page is uncompressed, the buffer either stack or heap provided
     if (got_from_prefetch_buffer || used_buf == &stack_buf[0]) {
@@ -452,7 +464,10 @@ Status ReadBlockContents(RandomAccessFileReader* file,
     *contents = BlockContents(std::move(heap_buf), n, true, compression_type);
   }
 
-  if (status.ok() && !got_from_prefetch_buffer && read_options.fill_cache &&
+  //更新uncompressed缓存
+  if (status.ok() &&
+      !got_from_prefetch_buffer &&
+      read_options.fill_cache &&
       cache_options.persistent_cache &&
       !cache_options.persistent_cache->IsCompressed()) {
     // insert to uncompressed cache

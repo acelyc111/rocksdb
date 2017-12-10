@@ -510,9 +510,9 @@ Status HdfsEnv::CreateDirIfMissing(const std::string& name) {
   //  Not atomic. state might change b/w hdfsExists and CreateDir.
   switch (value) {
     case HDFS_EXISTS:
-    return Status::OK();
+      return Status::OK();
     case HDFS_DOESNT_EXIST:
-    return CreateDir(name);
+      return CreateDir(name);
     default:  // anything else should be an error
       ROCKS_LOG_FATAL(mylog, "CreateDirIfMissing hdfsExists call failed");
       throw HdfsFatalException("hdfsExists call failed with error " +

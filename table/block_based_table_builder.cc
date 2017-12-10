@@ -548,8 +548,10 @@ void BlockBasedTableBuilder::WriteRawBlock(const Slice& block_contents,
   handle->set_offset(r->offset);
   handle->set_size(block_contents.size());
   assert(r->status.ok());
+  //r->file: block_contents
   r->status = r->file->Append(block_contents);
   if (r->status.ok()) {
+    // 1-byte compression type + 32-bit crc
     char trailer[kBlockTrailerSize];
     trailer[0] = type;
     char* trailer_without_type = trailer + 1;
@@ -574,6 +576,7 @@ void BlockBasedTableBuilder::WriteRawBlock(const Slice& block_contents,
     }
 
     assert(r->status.ok());
+  //r->file: trailer
     r->status = r->file->Append(Slice(trailer, kBlockTrailerSize));
     if (r->status.ok()) {
       r->status = InsertBlockInCache(block_contents, type, handle);

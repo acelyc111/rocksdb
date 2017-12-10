@@ -274,10 +274,13 @@ Status DBImpl::Directories::CreateAndNewDirectory(
 Status DBImpl::Directories::SetDirectories(
     Env* env, const std::string& dbname, const std::string& wal_dir,
     const std::vector<DbPath>& data_paths) {
+  //创建根目录
   Status s = CreateAndNewDirectory(env, dbname, &db_dir_);
   if (!s.ok()) {
     return s;
   }
+
+  //创建wal目录
   if (!wal_dir.empty() && dbname != wal_dir) {
     s = CreateAndNewDirectory(env, wal_dir, &wal_dir_);
     if (!s.ok()) {
@@ -285,6 +288,7 @@ Status DBImpl::Directories::SetDirectories(
     }
   }
 
+  //创建各个data目录
   data_dirs_.clear();
   for (auto& p : data_paths) {
     const std::string db_path = p.path;
@@ -303,6 +307,7 @@ Status DBImpl::Directories::SetDirectories(
   return Status::OK();
 }
 
+//恢复数据
 Status DBImpl::Recover(
     const std::vector<ColumnFamilyDescriptor>& column_families, bool read_only,
     bool error_if_log_file_exist, bool error_if_data_exists_in_logs) {
@@ -311,6 +316,7 @@ Status DBImpl::Recover(
   bool is_new_db = false;
   assert(db_lock_ == nullptr);
   if (!read_only) {
+    //创建目录
     Status s = directories_.SetDirectories(env_, dbname_,
                                            immutable_db_options_.wal_dir,
                                            immutable_db_options_.db_paths);
@@ -318,14 +324,16 @@ Status DBImpl::Recover(
       return s;
     }
 
+    //没有实际lock？
     s = env_->LockFile(LockFileName(dbname_), &db_lock_);
     if (!s.ok()) {
       return s;
     }
 
+    //CURRENT文件
     s = env_->FileExists(CurrentFileName(dbname_));
-    if (s.IsNotFound()) {
-      if (immutable_db_options_.create_if_missing) {
+    if (s.IsNotFound()) {                       //不存在
+      if (immutable_db_options_.create_if_missing) {    //需要创建
         s = NewDB();
         is_new_db = true;
         if (!s.ok()) {
@@ -335,24 +343,26 @@ Status DBImpl::Recover(
         return Status::InvalidArgument(
             dbname_, "does not exist (create_if_missing is false)");
       }
-    } else if (s.ok()) {
+    } else if (s.ok()) {                        //存在
       if (immutable_db_options_.error_if_exists) {
         return Status::InvalidArgument(
             dbname_, "exists (error_if_exists is true)");
       }
-    } else {
+    } else {                                    //其他错误
       // Unexpected error reading file
       assert(s.IsIOError());
       return s;
     }
+
+    //IDENTITY文件
     // Check for the IDENTITY file and create it if not there
     s = env_->FileExists(IdentityFileName(dbname_));
-    if (s.IsNotFound()) {
-      s = SetIdentityFile(env_, dbname_);
+    if (s.IsNotFound()) {                       //不存在
+      s = SetIdentityFile(env_, dbname_);           //创建
       if (!s.ok()) {
         return s;
       }
-    } else if (!s.ok()) {
+    } else if (!s.ok()) {                       //其他错误
       assert(s.IsIOError());
       return s;
     }
@@ -362,6 +372,7 @@ Status DBImpl::Recover(
   if (immutable_db_options_.paranoid_checks && s.ok()) {
     s = CheckConsistency();
   }
+
   if (s.ok()) {
     SequenceNumber next_sequence(kMaxSequenceNumber);
     default_cf_handle_ = new ColumnFamilyHandleImpl(
@@ -966,11 +977,13 @@ Status DB::Open(const Options& options, const std::string& dbname, DB** dbptr) {
 Status DB::Open(const DBOptions& db_options, const std::string& dbname,
                 const std::vector<ColumnFamilyDescriptor>& column_families,
                 std::vector<ColumnFamilyHandle*>* handles, DB** dbptr) {
+  //解析options
   Status s = SanitizeOptionsByTable(db_options, column_families);
   if (!s.ok()) {
     return s;
   }
 
+  //判断options合法性
   s = ValidateOptions(db_options, column_families);
   if (!s.ok()) {
     return s;
@@ -986,9 +999,9 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
   }
 
   DBImpl* impl = new DBImpl(db_options, dbname);
-  s = impl->env_->CreateDirIfMissing(impl->immutable_db_options_.wal_dir);
+  s = impl->env_->CreateDirIfMissing(impl->immutable_db_options_.wal_dir);  //创建公共的wal目录
   if (s.ok()) {
-    for (auto db_path : impl->immutable_db_options_.db_paths) {
+    for (auto db_path : impl->immutable_db_options_.db_paths) {             //分别创建db目录
       s = impl->env_->CreateDirIfMissing(db_path.path);
       if (!s.ok()) {
         break;
@@ -1001,14 +1014,15 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
     return s;
   }
 
-  s = impl->CreateArchivalDirectory();
+  s = impl->CreateArchivalDirectory();                                      //创建wal目录？  重复了吗
   if (!s.ok()) {
     delete impl;
     return s;
   }
+
   impl->mutex_.Lock();
   // Handles create_if_missing, error_if_exists
-  s = impl->Recover(column_families);
+  s = impl->Recover(column_families);                                       //恢复数据
   if (s.ok()) {
     uint64_t new_log_number = impl->versions_->NewFileNumber();
     unique_ptr<WritableFile> lfile;

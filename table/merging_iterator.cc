@@ -28,8 +28,8 @@
 namespace rocksdb {
 // Without anonymous namespace here, we fail the warning -Wmissing-prototypes
 namespace {
-typedef BinaryHeap<IteratorWrapper*, MaxIteratorComparator> MergerMaxIterHeap;
-typedef BinaryHeap<IteratorWrapper*, MinIteratorComparator> MergerMinIterHeap;
+typedef BinaryHeap<IteratorWrapper*, MaxIteratorComparator> MergerMaxIterHeap;  //大顶堆
+typedef BinaryHeap<IteratorWrapper*, MinIteratorComparator> MergerMinIterHeap;  //小顶堆
 }  // namespace
 
 const size_t kNumIterReserve = 4;
@@ -79,41 +79,44 @@ class MergingIterator : public InternalIterator {
 
   virtual bool Valid() const override { return (current_ != nullptr); }
 
+  //从头开始
   virtual void SeekToFirst() override {
     ClearHeaps();
     for (auto& child : children_) {
       child.SeekToFirst();
       if (child.Valid()) {
-        minHeap_.push(&child);
+        minHeap_.push(&child);      //使用小顶堆
       }
     }
     direction_ = kForward;
-    current_ = CurrentForward();
+    current_ = CurrentForward();    //当前为最小的元素
   }
 
+  //从尾开始
   virtual void SeekToLast() override {
     ClearHeaps();
-    InitMaxHeap();
+    InitMaxHeap();                  //使用大顶堆
     for (auto& child : children_) {
       child.SeekToLast();
       if (child.Valid()) {
-        maxHeap_->push(&child);
+        maxHeap_->push(&child);     //当前最大的元素
       }
     }
     direction_ = kReverse;
     current_ = CurrentReverse();
   }
 
+  //在所有iterator中，找到最接近target的
   virtual void Seek(const Slice& target) override {
-    ClearHeaps();
-    for (auto& child : children_) {
+    ClearHeaps();                                   //清空排序堆
+    for (auto& child : children_) {                 //遍历所有iterator
       {
         PERF_TIMER_GUARD(seek_child_seek_time);
-        child.Seek(target);
+        child.Seek(target);                         //每个都seek target
       }
       PERF_COUNTER_ADD(seek_child_seek_count, 1);
 
-      if (child.Valid()) {
+      if (child.Valid()) {                          //合法，则放入小顶堆中
         PERF_TIMER_GUARD(seek_min_heap_time);
         minHeap_.push(&child);
       }
@@ -121,7 +124,7 @@ class MergingIterator : public InternalIterator {
     direction_ = kForward;
     {
       PERF_TIMER_GUARD(seek_min_heap_time);
-      current_ = CurrentForward();
+      current_ = CurrentForward();                  //取得最小的
     }
   }
 
@@ -148,6 +151,7 @@ class MergingIterator : public InternalIterator {
     }
   }
 
+  //向后遍历
   virtual void Next() override {
     assert(Valid());
 
@@ -167,19 +171,20 @@ class MergingIterator : public InternalIterator {
     assert(current_ == CurrentForward());
 
     // as the current points to the current record. move the iterator forward.
-    current_->Next();
+    current_->Next();                               //取current的下一元素
     if (current_->Valid()) {
       // current is still valid after the Next() call above.  Call
       // replace_top() to restore the heap property.  When the same child
       // iterator yields a sequence of keys, this is cheap.
-      minHeap_.replace_top(current_);
+      minHeap_.replace_top(current_);               //下一元素合法，则将新元素替换原来的元素，并调整小顶堆
     } else {
       // current stopped being valid, remove it from the heap.
-      minHeap_.pop();
+      minHeap_.pop();                               //下一元素不合法，则小顶堆弹顶，并调整小顶堆
     }
-    current_ = CurrentForward();
+    current_ = CurrentForward();                    //重新取当前的小顶堆顶
   }
 
+  //向前遍历
   virtual void Prev() override {
     assert(Valid());
     // Ensure that all children are positioned before key().
@@ -189,6 +194,7 @@ class MergingIterator : public InternalIterator {
     if (direction_ != kReverse) {
       // Otherwise, retreat the non-current children.  We retreat current_
       // just after the if-block.
+      // TODO 为什么不封装？
       ClearHeaps();
       InitMaxHeap();
       for (auto& child : children_) {
@@ -296,19 +302,22 @@ class MergingIterator : public InternalIterator {
 
   bool is_arena_mode_;
   const InternalKeyComparator* comparator_;
+
+  //需要merge的所有iterator的集合
+  //查找所有iterator的最小值是O(n)
   autovector<IteratorWrapper, kNumIterReserve> children_;
 
   // Cached pointer to child iterator with the current key, or nullptr if no
   // child iterators are valid.  This is the top of minHeap_ or maxHeap_
   // depending on the direction.
-  IteratorWrapper* current_;
+  IteratorWrapper* current_;                                //当前最小/最大的iterator
   // Which direction is the iterator moving?
   enum Direction {
     kForward,
     kReverse
   };
   Direction direction_;
-  MergerMinIterHeap minHeap_;
+  MergerMinIterHeap minHeap_;                               //小顶堆
   bool prefix_seek_mode_;
 
   // Max heap is used for reverse iteration, which is way less common than
@@ -318,11 +327,13 @@ class MergingIterator : public InternalIterator {
 
   void SwitchToForward();
 
+  //向前，则取最小的
   IteratorWrapper* CurrentForward() const {
     assert(direction_ == kForward);
     return !minHeap_.empty() ? minHeap_.top() : nullptr;
   }
 
+  //向后，则取最大的
   IteratorWrapper* CurrentReverse() const {
     assert(direction_ == kReverse);
     assert(maxHeap_);
@@ -330,6 +341,7 @@ class MergingIterator : public InternalIterator {
   }
 };
 
+//转向为向前  TODO 为什么会反向？
 void MergingIterator::SwitchToForward() {
   // Otherwise, advance the non-current children.  We advance current_
   // just after the if-block.
@@ -338,16 +350,17 @@ void MergingIterator::SwitchToForward() {
     if (&child != current_) {
       child.Seek(key());
       if (child.Valid() && comparator_->Equal(key(), child.key())) {
-        child.Next();
+        child.Next();                       //将其他iterator都seek到大于key的位置
       }
     }
     if (child.Valid()) {
-      minHeap_.push(&child);
+      minHeap_.push(&child);                //将所有seek的key都放到小顶堆中
     }
   }
   direction_ = kForward;
 }
 
+//清空小顶堆、大顶堆
 void MergingIterator::ClearHeaps() {
   minHeap_.clear();
   if (maxHeap_) {

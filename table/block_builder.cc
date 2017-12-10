@@ -76,7 +76,12 @@ size_t BlockBuilder::EstimateSizeAfterKV(const Slice& key, const Slice& value)
 
   return estimate;
 }
-
+// record 0
+// record 1
+// record 2
+// record ...
+// restarts_[N]
+// restarts_ size N
 Slice BlockBuilder::Finish() {
   // Append restart array
   for (size_t i = 0; i < restarts_.size(); i++) {
@@ -87,11 +92,12 @@ Slice BlockBuilder::Finish() {
   return Slice(buffer_);
 }
 
+// <shared key size><non_shared key size><value_size><non_shared key><value> 
 void BlockBuilder::Add(const Slice& key, const Slice& value) {
   assert(!finished_);
   assert(counter_ <= block_restart_interval_);
   size_t shared = 0;  // number of bytes shared with prev key
-  if (counter_ >= block_restart_interval_) {
+  if (counter_ >= block_restart_interval_) {    //需要重设重启点了
     // Restart compression
     restarts_.push_back(static_cast<uint32_t>(buffer_.size()));
     estimate_ += sizeof(uint32_t);

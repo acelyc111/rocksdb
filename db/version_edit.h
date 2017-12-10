@@ -133,6 +133,7 @@ struct FileMetaData {
   }
 };
 
+//描述每个sst文件?
 // A compressed copy of file meta data that just contain minimum data needed
 // to server read operations, while still keeping the pointer to full metadata
 // of the file in case it is needed.
@@ -156,11 +157,12 @@ struct FdWithKeyRange {
         largest_key(_largest_key) {}
 };
 
+//某一level的全部sst
 // Data structure to store an array of FdWithKeyRange in one level
 // Actual data is guaranteed to be stored closely
 struct LevelFilesBrief {
   size_t num_files;
-  FdWithKeyRange* files;
+  FdWithKeyRange* files;        //已排序？
   LevelFilesBrief() {
     num_files = 0;
     files = nullptr;

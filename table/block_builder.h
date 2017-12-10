@@ -48,15 +48,15 @@ class BlockBuilder {
   }
 
  private:
-  const int          block_restart_interval_;
-  const bool         use_delta_encoding_;
+  const int          block_restart_interval_;   //每多少个key做一次共享前缀
+  const bool         use_delta_encoding_;       //是否共享前缀？
 
   std::string           buffer_;    // Destination buffer
-  std::vector<uint32_t> restarts_;  // Restart points
-  size_t                estimate_;
+  std::vector<uint32_t> restarts_;  // Restart points   每个重启点的偏移
+  size_t                estimate_;  // 当前block未压缩的大小
   int                   counter_;   // Number of entries emitted since restart
   bool                  finished_;  // Has Finish() been called?
-  std::string           last_key_;
+  std::string           last_key_;  // 记录上一个key，以便计算共享前缀
 };
 
 }  // namespace rocksdb

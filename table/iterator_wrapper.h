@@ -15,6 +15,7 @@
 
 namespace rocksdb {
 
+// 使用本地的key_ valid_缓存优化，避免virtual function的调用
 // A internal wrapper class with an interface similar to Iterator that caches
 // the valid() and key() results for an underlying iterator.
 // This can help avoid virtual function calls and also gives better
@@ -83,6 +84,7 @@ class IteratorWrapper {
   }
 
  private:
+  //将底层iterator的valid、key值缓存，以做优化
   void Update() {
     valid_ = iter_->Valid();
     if (valid_) {
@@ -90,9 +92,9 @@ class IteratorWrapper {
     }
   }
 
-  InternalIterator* iter_;
-  bool valid_;
-  Slice key_;
+  InternalIterator* iter_;          //包装的底层iterator
+  bool valid_;                      //缓存的valid值
+  Slice key_;                       //缓存的key
 };
 
 class Arena;

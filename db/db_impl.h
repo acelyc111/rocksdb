@@ -1020,6 +1020,7 @@ class DBImpl : public DB {
 
   bool is_snapshot_supported_;
 
+  //管理所有的路径
   // Class to maintain directories for all database paths other than main one.
   class Directories {
    public:
@@ -1039,9 +1040,9 @@ class DBImpl : public DB {
     Directory* GetDbDir() { return db_dir_.get(); }
 
    private:
-    std::unique_ptr<Directory> db_dir_;
-    std::vector<std::unique_ptr<Directory>> data_dirs_;
-    std::unique_ptr<Directory> wal_dir_;
+    std::unique_ptr<Directory> db_dir_;                 //一个db根目录
+    std::vector<std::unique_ptr<Directory>> data_dirs_; //多个data目录
+    std::unique_ptr<Directory> wal_dir_;                //一个wal目录
 
     Status CreateAndNewDirectory(Env* env, const std::string& dirname,
                                  std::unique_ptr<Directory>* directory) const;

@@ -56,6 +56,7 @@ static inline const char* DecodeEntry(const char* p, const char* limit,
   return p;
 }
 
+// 迭代到下一个key
 void BlockIter::Next() {
   assert(Valid());
   ParseNextKey();
@@ -66,17 +67,17 @@ void BlockIter::Prev() {
 
   assert(prev_entries_idx_ == -1 ||
          static_cast<size_t>(prev_entries_idx_) < prev_entries_.size());
-  // Check if we can use cached prev_entries_
+  // Check if we can use cached prev_entries_       先尝试使用缓存
   if (prev_entries_idx_ > 0 &&
       prev_entries_[prev_entries_idx_].offset == current_) {
     // Read cached CachedPrevEntry
-    prev_entries_idx_--;
+    prev_entries_idx_--;                            //回退一个索引，就是上一个的
     const CachedPrevEntry& current_prev_entry =
         prev_entries_[prev_entries_idx_];
 
     const char* key_ptr = nullptr;
     if (current_prev_entry.key_ptr != nullptr) {
-      // The key is not delta encoded and stored in the data block
+      // The key is not delta encoded and stored in the data block  ?
       key_ptr = current_prev_entry.key_ptr;
       key_pinned_ = true;
     } else {
@@ -93,11 +94,13 @@ void BlockIter::Prev() {
     return;
   }
 
+  //缓存中没有，则清空缓存，并遍历查找（查找过程中也会更新缓存）
   // Clear prev entries cache
   prev_entries_idx_ = -1;
   prev_entries_.clear();
   prev_entries_keys_buff_.clear();
 
+  //先找到上一个restart_index_（可能跟当前是同一个）
   // Scan backwards to a restart point before current_
   const uint32_t original = current_;
   while (GetRestartPoint(restart_index_) >= original) {
@@ -110,8 +113,10 @@ void BlockIter::Prev() {
     restart_index_--;
   }
 
+  //seek起点到restart的起点
   SeekToRestartPoint(restart_index_);
 
+  //遍历查找
   do {
     if (!ParseNextKey()) {
       break;
@@ -135,11 +140,14 @@ void BlockIter::Prev() {
   prev_entries_idx_ = static_cast<int32_t>(prev_entries_.size()) - 1;
 }
 
+//从block中找到target
 void BlockIter::Seek(const Slice& target) {
   PERF_TIMER_GUARD(block_seek_nanos);
   if (data_ == nullptr) {  // Not init yet
     return;
   }
+
+  //首先找到restart
   uint32_t index = 0;
   bool ok = false;
   if (prefix_index_) {
@@ -151,9 +159,12 @@ void BlockIter::Seek(const Slice& target) {
   if (!ok) {
     return;
   }
-  SeekToRestartPoint(index);
-  // Linear search (within restart block) for first key >= target
 
+  //value_指向找到的restart起点，准备下次查找
+  SeekToRestartPoint(index);
+
+  //遍历，线性查找
+  // Linear search (within restart block) for first key >= target
   while (true) {
     if (!ParseNextKey() || Compare(key_.GetInternalKey(), target) >= 0) {
       return;
@@ -187,19 +198,25 @@ void BlockIter::SeekForPrev(const Slice& target) {
   }
 }
 
+// key_指向block的第一个key
 void BlockIter::SeekToFirst() {
   if (data_ == nullptr) {  // Not init yet
     return;
   }
+  //先seek到第一个restart
   SeekToRestartPoint(0);
+  //再seek到第一个key
   ParseNextKey();
 }
 
+// key_指向block的最后一个key
 void BlockIter::SeekToLast() {
   if (data_ == nullptr) {  // Not init yet
     return;
   }
+  //先seek到最后一个restart
   SeekToRestartPoint(num_restarts_ - 1);
+  //再seek到最后一个key
   while (ParseNextKey() && NextEntryOffset() < restarts_) {
     // Keep skipping
   }
@@ -275,6 +292,7 @@ bool BlockIter::ParseNextKey() {
   }
 }
 
+// 二分查找，从restarts中找到target所在的restart
 // Binary search in restart array to find the first restart point that
 // is either the last restart point with a key less than target,
 // which means the key of next restart point is larger than target, or
@@ -379,6 +397,7 @@ bool BlockIter::BinaryBlockIndexSeek(const Slice& target, uint32_t* block_ids,
   }
 }
 
+//?
 bool BlockIter::PrefixSeek(const Slice& target, uint32_t* index) {
   assert(prefix_index_);
   uint32_t* block_ids = nullptr;
@@ -422,7 +441,7 @@ Block::Block(BlockContents&& contents, SequenceNumber _global_seqno,
 
 InternalIterator* Block::NewIterator(const Comparator* cmp, BlockIter* iter,
                                      bool total_order_seek, Statistics* stats) {
-  if (size_ < 2*sizeof(uint32_t)) {
+  if (size_ < 2*sizeof(uint32_t)) {     //至少包含restarts[0]和num_restarts
     if (iter != nullptr) {
       iter->SetStatus(Status::Corruption("bad block contents"));
       return iter;
@@ -431,7 +450,7 @@ InternalIterator* Block::NewIterator(const Comparator* cmp, BlockIter* iter,
     }
   }
   const uint32_t num_restarts = NumRestarts();
-  if (num_restarts == 0) {
+  if (num_restarts == 0) {              //没有restarts，也就没有records
     if (iter != nullptr) {
       iter->SetStatus(Status::OK());
       return iter;
@@ -439,18 +458,22 @@ InternalIterator* Block::NewIterator(const Comparator* cmp, BlockIter* iter,
       return NewEmptyInternalIterator();
     }
   } else {
+    //?
     BlockPrefixIndex* prefix_index_ptr =
         total_order_seek ? nullptr : prefix_index_.get();
 
+    //初始化iter
     if (iter != nullptr) {
       iter->Initialize(cmp, data_, restart_offset_, num_restarts,
-                       prefix_index_ptr, global_seqno_, read_amp_bitmap_.get());
+                       prefix_index_ptr, global_seqno_,
+                       read_amp_bitmap_.get());
     } else {
       iter = new BlockIter(cmp, data_, restart_offset_, num_restarts,
                            prefix_index_ptr, global_seqno_,
                            read_amp_bitmap_.get());
     }
 
+    //?
     if (read_amp_bitmap_) {
       if (read_amp_bitmap_->GetStatistics() != stats) {
         // DB changed the Statistics pointer, we need to notify read_amp_bitmap_

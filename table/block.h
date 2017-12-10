@@ -303,8 +303,8 @@ class BlockIter : public InternalIterator {
   // current_ is offset in data_ of current entry.  >= restarts_ if !Valid
   uint32_t current_;
   uint32_t restart_index_;  // Index of restart block in which current_ falls
-  IterKey key_;
-  Slice value_;
+  IterKey key_;             // key_ is <= target
+  Slice value_;             // NOT value of key_, BUT the seek offset in data_
   Status status_;
   BlockPrefixIndex* prefix_index_;
   bool key_pinned_;
@@ -336,7 +336,7 @@ class BlockIter : public InternalIterator {
     Slice value;
   };
   std::string prev_entries_keys_buff_;
-  std::vector<CachedPrevEntry> prev_entries_;
+  std::vector<CachedPrevEntry> prev_entries_;           //TODO ?
   int32_t prev_entries_idx_ = -1;
 
   inline int Compare(const Slice& a, const Slice& b) const {

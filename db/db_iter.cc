@@ -276,7 +276,11 @@ class DBIter final: public Iterator {
   Logger* logger_;
   const Comparator* const user_comparator_;
   const MergeOperator* const merge_operator_;
+  //封装整个db Iterator的MergingIterator
   InternalIterator* iter_;
+  //通过SequnceNumber的比较来控制遍历数据的时间点。
+  //如果指定了Snapshot，则赋值为Snapshot::sequncenumber, 只遍历出Snapshot确定之前的数据;
+  //否则赋值为VersionSet::last_sequnce_,遍历出当前db中所有的数据
   SequenceNumber sequence_;
 
   Status status_;
@@ -293,12 +297,12 @@ class DBIter final: public Iterator {
   // for prefix seek mode to support prev()
   Statistics* statistics_;
   uint64_t max_skip_;
-  uint64_t max_skippable_internal_keys_;
-  uint64_t num_internal_keys_skipped_;
+  uint64_t max_skippable_internal_keys_;            //最大能跳过的key数量
+  uint64_t num_internal_keys_skipped_;              //当前已跳过的key数量
   const Slice* iterate_lower_bound_;
   const Slice* iterate_upper_bound_;
   IterKey prefix_start_buf_;
-  Slice prefix_start_key_;
+  Slice prefix_start_key_;                          //?
   const bool prefix_same_as_start_;
   // Means that we will pin all data blocks we read as long the Iterator
   // is not deleted, will be true if ReadOptions::pin_data is true
@@ -314,13 +318,14 @@ class DBIter final: public Iterator {
   bool is_blob_;
   // for diff snapshots we want the lower bound on the seqnum;
   // if this value > 0 iterator will return internal keys
-  SequenceNumber start_seqnum_;
+  SequenceNumber start_seqnum_;                     //?
 
   // No copying allowed
   DBIter(const DBIter&);
   void operator=(const DBIter&);
 };
 
+//解析当前迭代器所在的key
 inline bool DBIter::ParseKey(ParsedInternalKey* ikey) {
   if (!ParseInternalKey(iter_->key(), ikey)) {
     status_ = Status::Corruption("corrupted internal key in DBIter");
@@ -385,6 +390,7 @@ inline void DBIter::FindNextUserEntry(bool skipping, bool prefix_check) {
   FindNextUserEntryInternal(skipping, prefix_check);
 }
 
+//TODO 比较复杂？
 // Actual implementation of DBIter::FindNextUserEntry()
 void DBIter::FindNextUserEntryInternal(bool skipping, bool prefix_check) {
   // Loop until we hit an acceptable entry to yield
@@ -407,36 +413,42 @@ void DBIter::FindNextUserEntryInternal(bool skipping, bool prefix_check) {
   is_blob_ = false;
 
   do {
-    if (!ParseKey(&ikey_)) {
-      // Skip corrupted keys.
+    if (!ParseKey(&ikey_)) {    //解析迭代器当前所在的key到ikey_
+      // Skip corrupted keys.   //?
       iter_->Next();
       continue;
     }
 
+    //已经超出上限
     if (iterate_upper_bound_ != nullptr &&
         user_comparator_->Compare(ikey_.user_key, *iterate_upper_bound_) >= 0) {
       break;
     }
 
+    //?
     if (prefix_extractor_ && prefix_check &&
         prefix_extractor_->Transform(ikey_.user_key)
                 .compare(prefix_start_key_) != 0) {
       break;
     }
 
+    //判断skip超限(保护措施？)
     if (TooManyInternalKeysSkipped()) {
       return;
     }
 
+    //数据可见
     if (IsVisible(ikey_.sequence)) {
+      //需要跳过
       if (skipping && user_comparator_->Compare(ikey_.user_key,
                                                 saved_key_.GetUserKey()) <= 0) {
         num_skipped++;  // skip this entry
         PERF_COUNTER_ADD(internal_key_skipped_count, 1);
+      //不需跳过
       } else {
         num_skipped = 0;
         switch (ikey_.type) {
-          case kTypeDeletion:
+          case kTypeDeletion:                                               //删除类型
           case kTypeSingleDeletion:
             // Arrange to skip all upcoming entries for this key since
             // they are hidden by this deletion.
@@ -445,11 +457,11 @@ void DBIter::FindNextUserEntryInternal(bool skipping, bool prefix_check) {
             // 2) return ikey only if ikey.seqnum >= start_seqnum_
             // not that if deletion seqnum is < start_seqnum_ we
             // just skip it like in normal iterator.
-            if (start_seqnum_ > 0 && ikey_.sequence >= start_seqnum_)  {
+            if (start_seqnum_ > 0 && ikey_.sequence >= start_seqnum_)  {    //找到
               saved_key_.SetInternalKey(ikey_);
-              valid_=true;
+              valid_ = true;
               return;
-            } else {
+            } else {                                                        //没找到(本次找到的seq no太小)
               saved_key_.SetUserKey(
                 ikey_.user_key,
                 !pin_thru_lifetime_ || !iter_->IsKeyPinned() /* copy */);
@@ -457,7 +469,7 @@ void DBIter::FindNextUserEntryInternal(bool skipping, bool prefix_check) {
                 PERF_COUNTER_ADD(internal_delete_skipped_count, 1);
             }
             break;
-          case kTypeValue:
+          case kTypeValue:                                                  //value类型
           case kTypeBlobIndex:
             if (start_seqnum_ > 0) {
               // we are taking incremental snapshot here
@@ -465,22 +477,22 @@ void DBIter::FindNextUserEntryInternal(bool skipping, bool prefix_check) {
               assert(!(
                 (ikey_.type == kTypeBlobIndex) && (start_seqnum_ > 0)
               ));
-              if (ikey_.sequence >= start_seqnum_) {
+              if (ikey_.sequence >= start_seqnum_) {                        //找到
                 saved_key_.SetInternalKey(ikey_);
                 valid_ = true;
                 return;
-              } else {
+              } else {                                                      //没找到(本次找到的seq no太小)
                 // this key and all previous versions shouldn't be included,
                 // skipping
                 saved_key_.SetUserKey(ikey_.user_key,
                   !pin_thru_lifetime_ || !iter_->IsKeyPinned() /* copy */);
                 skipping = true;
               }
-            } else {
+            } else {                                                        //TODO fallowing??
               saved_key_.SetUserKey(
                   ikey_.user_key,
                   !pin_thru_lifetime_ || !iter_->IsKeyPinned() /* copy */);
-              if (range_del_agg_.ShouldDelete(
+              if (range_del_agg_.ShouldDelete(                              //in range_del
                       ikey_, RangeDelAggregator::RangePositioningMode::
                                  kForwardTraversal)) {
                 // Arrange to skip all upcoming entries for this key since
@@ -532,7 +544,7 @@ void DBIter::FindNextUserEntryInternal(bool skipping, bool prefix_check) {
             break;
         }
       }
-    } else {
+    } else {                                                //数据不可见(snapshot后写入的数据)
       // This key was inserted after our snapshot was taken.
       PERF_COUNTER_ADD(internal_recent_skipped_count, 1);
 
@@ -790,9 +802,11 @@ void DBIter::PrevInternal() {
       return;
     }
 
+    //当前迭代器是否合法
     if (!iter_->Valid()) {
       break;
     }
+
     FindParseableKey(&ikey, kReverse);
     if (user_comparator_->Equal(ikey.user_key, saved_key_.GetUserKey())) {
       FindPrevUserKey();
@@ -1090,6 +1104,7 @@ void DBIter::FindPrevUserKey() {
   }
 }
 
+//跳过计数，并判断是否已经超限
 bool DBIter::TooManyInternalKeysSkipped(bool increment) {
   if ((max_skippable_internal_keys_ > 0) &&
       (num_internal_keys_skipped_ > max_skippable_internal_keys_)) {
@@ -1102,12 +1117,13 @@ bool DBIter::TooManyInternalKeysSkipped(bool increment) {
   return false;
 }
 
+//可见的数据（seq no小于等于搜索指定的seq no， 并且该seq no已提交？）
 bool DBIter::IsVisible(SequenceNumber sequence) {
   return sequence <= sequence_ &&
          (read_callback_ == nullptr || read_callback_->IsCommitted(sequence));
 }
 
-// Skip all unparseable keys
+// Skip all unparseable keys    跳过所有不可解析的key
 void DBIter::FindParseableKey(ParsedInternalKey* ikey, Direction direction) {
   while (iter_->Valid() && !ParseKey(ikey)) {
     if (direction == kReverse) {

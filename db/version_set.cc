@@ -55,6 +55,7 @@ namespace rocksdb {
 
 namespace {
 
+//在某层的文件列表中，并制定范围查找key
 // Find File in LevelFilesBrief data structure
 // Within an index range defined by left and right
 int FindFileInRange(const InternalKeyComparator& icmp,
@@ -62,6 +63,7 @@ int FindFileInRange(const InternalKeyComparator& icmp,
     const Slice& key,
     uint32_t left,
     uint32_t right) {
+  //二分查找
   while (left < right) {
     uint32_t mid = (left + right) / 2;
     const FdWithKeyRange& f = file_level.files[mid];
@@ -333,6 +335,7 @@ Version::~Version() {
   }
 }
 
+//在某层的文件列表中查找key
 int FindFile(const InternalKeyComparator& icmp,
              const LevelFilesBrief& file_level,
              const Slice& key) {
@@ -424,6 +427,7 @@ bool SomeFileOverlapsRange(
 
 namespace {
 
+// 给定version:level对，产生相应的文件元信息
 // An internal iterator.  For a given version/level pair, yields
 // information about the files in the level.  For a given entry, key()
 // is the largest key that occurs in the file, and value() is an
@@ -439,6 +443,7 @@ class LevelFileNumIterator : public InternalIterator {
         current_value_(0, 0, 0),  // Marks as invalid
         should_sample_(should_sample) {}
   virtual bool Valid() const override { return index_ < flevel_->num_files; }
+  //定位target
   virtual void Seek(const Slice& target) override {
     index_ = FindFile(icmp_, *flevel_, target);
   }
@@ -482,10 +487,10 @@ class LevelFileNumIterator : public InternalIterator {
   virtual Status status() const override { return Status::OK(); }
 
  private:
-  const InternalKeyComparator icmp_;
-  const LevelFilesBrief* flevel_;
-  uint32_t index_;
-  mutable FileDescriptor current_value_;
+  const InternalKeyComparator icmp_;        //key比较函数
+  const LevelFilesBrief* flevel_;           //该level的所有sst
+  uint32_t index_;                          //当前处理文件的索引
+  mutable FileDescriptor current_value_;    //当前处理文件的fd
   bool should_sample_;
 };
 

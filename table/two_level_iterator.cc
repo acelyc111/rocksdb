@@ -19,6 +19,7 @@ namespace rocksdb {
 
 namespace {
 
+//sstable的Iterator
 class TwoLevelIterator : public InternalIterator {
  public:
   explicit TwoLevelIterator(TwoLevelIteratorState* state,
@@ -112,17 +113,24 @@ TwoLevelIterator::TwoLevelIterator(TwoLevelIteratorState* state,
       pinned_iters_mgr_(nullptr) {}
 
 void TwoLevelIterator::Seek(const Slice& target) {
+  //首先使用过滤器？
   if (state_->check_prefix_may_match &&
       !state_->PrefixMayMatch(target)) {
     SetSecondLevelIterator(nullptr);
     return;
   }
+  //先seek到block，设置block的iterator?
   first_level_iter_.Seek(target);
 
+  //设置record的iterator
   InitDataBlock();
+
+  //seek到record的位置
   if (second_level_iter_.iter() != nullptr) {
     second_level_iter_.Seek(target);
   }
+
+  //跳过空数据
   SkipEmptyDataBlocksForward();
 }
 
@@ -178,13 +186,14 @@ void TwoLevelIterator::Prev() {
   SkipEmptyDataBlocksBackward();
 }
 
+//跳过空数据
 void TwoLevelIterator::SkipEmptyDataBlocksForward() {
   while (second_level_iter_.iter() == nullptr ||
-         (!second_level_iter_.Valid() &&
+         (!second_level_iter_.Valid() &&                    //TODO when?
           !second_level_iter_.status().IsIncomplete())) {
     // Move to next block
     if (!first_level_iter_.Valid() ||
-        state_->KeyReachedUpperBound(first_level_iter_.key())) {
+        state_->KeyReachedUpperBound(first_level_iter_.key())) {    //TODO sstable已经到最后?
       SetSecondLevelIterator(nullptr);
       return;
     }
@@ -213,11 +222,13 @@ void TwoLevelIterator::SkipEmptyDataBlocksBackward() {
   }
 }
 
+//设置record的Iterator
 void TwoLevelIterator::SetSecondLevelIterator(InternalIterator* iter) {
   if (second_level_iter_.iter() != nullptr) {
     SaveError(second_level_iter_.status());
   }
 
+  //pin?
   if (pinned_iters_mgr_ && iter) {
     iter->SetPinnedItersMgr(pinned_iters_mgr_);
   }
@@ -230,13 +241,14 @@ void TwoLevelIterator::SetSecondLevelIterator(InternalIterator* iter) {
   }
 }
 
+//初始化record的Iterator
 void TwoLevelIterator::InitDataBlock() {
-  if (!first_level_iter_.Valid()) {
+  if (!first_level_iter_.Valid()) {                 //block的Iterator不合法
     SetSecondLevelIterator(nullptr);
   } else {
     Slice handle = first_level_iter_.value();
     if (second_level_iter_.iter() != nullptr &&
-        !second_level_iter_.status().IsIncomplete() &&
+        !second_level_iter_.status().IsIncomplete() &&  //record的Iterator已存在，且就是本block的Iterator
         handle.compare(data_block_handle_) == 0) {
       // second_level_iter is already constructed with this iterator, so
       // no need to change anything

@@ -303,8 +303,8 @@ class MemTableIterator : public InternalIterator {
   virtual void Seek(const Slice& k) override {
     PERF_TIMER_GUARD(seek_on_memtable_time);
     PERF_COUNTER_ADD(seek_on_memtable_count, 1);
-    if (bloom_ != nullptr) {
-      if (!bloom_->MayContain(
+    if (bloom_ != nullptr) {            //使用bloom filter
+      if (!bloom_->MayContain(              //不包含该key，直接返回
               prefix_extractor_->Transform(ExtractUserKey(k)))) {
         PERF_COUNTER_ADD(bloom_memtable_miss_count, 1);
         valid_ = false;
@@ -313,10 +313,13 @@ class MemTableIterator : public InternalIterator {
         PERF_COUNTER_ADD(bloom_memtable_hit_count, 1);
       }
     }
+    //查找key
     iter_->Seek(k, nullptr);
     valid_ = iter_->Valid();
   }
   virtual void SeekForPrev(const Slice& k) override {
+    //以下同Seek函数 TODO 直接调用Seek()
+    //====
     PERF_TIMER_GUARD(seek_on_memtable_time);
     PERF_COUNTER_ADD(seek_on_memtable_count, 1);
     if (bloom_ != nullptr) {
@@ -331,9 +334,12 @@ class MemTableIterator : public InternalIterator {
     }
     iter_->Seek(k, nullptr);
     valid_ = iter_->Valid();
+    //====
+
     if (!Valid()) {
       SeekToLast();
     }
+    //向前遍历（memtable可双向遍历）
     while (Valid() && comparator_.comparator.Compare(k, key()) < 0) {
       Prev();
     }
