@@ -149,6 +149,9 @@ bool DBTestBase::ShouldSkipOptions(int option_config, int skip_mask) {
     if ((skip_mask & kSkipMmapReads) && option_config == kWalDirAndMmapReads) {
       return true;
     }
+    if ((skip_mask & kSkipPipelinedWrite) && option_config == kPipelinedWrite) {
+      return true;
+    }
     return false;
 }
 

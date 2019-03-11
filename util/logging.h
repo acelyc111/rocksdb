@@ -18,7 +18,7 @@
 #define TOSTRING(x) STRINGIFY(x)
 #define PREPEND_FILE_LINE(FMT) ("[" __FILE__ ":" TOSTRING(__LINE__) "] " FMT)
 
-// Don't inclide file/line info in HEADER level
+// Don't include file/line info in HEADER level
 #define ROCKS_LOG_HEADER(LGR, FMT, ...) \
   rocksdb::Log(InfoLogLevel::HEADER_LEVEL, LGR, FMT, ##__VA_ARGS__)
 
