@@ -283,7 +283,7 @@ Status SstFileReader::SetOldTableOptions() {
   return Status::OK();
 }
 
-static size_t escape_string(const char* src, size_t src_len, char* dest, size_t dest_len) {
+size_t escape_string(const char* src, size_t src_len, char* dest, size_t dest_len) {
   const char* src_end = src + src_len;
   size_t used = 0;
   for (; src < src_end; src++) {
@@ -330,7 +330,7 @@ std::string escape_string(const T& src) {
 
 // T must support data() and size() method.
 template <typename T>
-static void pegasus_restore_key(const T& key, std::string& hash_key, std::string& sort_key) {
+void pegasus_restore_key(const T& key, std::string& hash_key, std::string& sort_key) {
   assert(key.size() >= 2);
   // hash_key_len is in big endian
   uint16_t hash_key_len = be16toh(*(int16_t*)(key.data()));

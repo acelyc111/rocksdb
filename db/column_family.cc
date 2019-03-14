@@ -1077,7 +1077,7 @@ size_t ColumnFamilySet::NumberOfColumnFamilies() const {
 uint32_t ColumnFamilySet::GetValueSchemaVersion() { return value_schema_version_; }
 
 void ColumnFamilySet::SetValueSchemaVersion(uint32_t version) {
-    value_schema_version_ = version;
+  value_schema_version_ = version;
 }
 
 uint64_t ColumnFamilySet::GetLastManualCompactFinishTime() {
@@ -1085,7 +1085,7 @@ uint64_t ColumnFamilySet::GetLastManualCompactFinishTime() {
 }
 
 void ColumnFamilySet::SetLastManualCompactFinishTime(uint64_t ms) {
-    last_manual_compact_finish_time_ = ms;
+  last_manual_compact_finish_time_ = ms;
 }
 
 // under a DB mutex AND write thread
