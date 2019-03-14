@@ -195,6 +195,7 @@ DBImpl::DBImpl(const DBOptions& options, const std::string& dbname)
       concurrent_prepare_(options.concurrent_prepare),
       manual_wal_flush_(options.manual_wal_flush),
       seq_per_batch_(options.seq_per_batch),
+      pegasus_data_(options.pegasus_data),
       // TODO(myabandeh): revise this when we change options.seq_per_batch
       use_custom_gc_(options.seq_per_batch),
       preserve_deletes_(options.preserve_deletes) {

@@ -3172,15 +3172,14 @@ Status VersionSet::Recover(
         column_family_set_->GetValueSchemaVersion(),
         column_family_set_->GetLastManualCompactFinishTime());
 
-    // TODO add an option instead
-#ifdef PEGASUS
-    // for pegasus, we have disabled WAL, so we need to reset last_sequence to
-    // last_flush_sequence
-    last_sequence_ = LastFlushSequence();
-    ROCKS_LOG_INFO(db_options_->info_log,
-        "Reset last_sequence to last_flush_sequence: %lu",
-        (unsigned long)last_sequence_);
-#endif  // PEGASUS
+    if (db_options_->pegasus_data) {
+      // For Pegasus, we have disabled WAL, so we need to reset last_sequence to
+      // last_flush_sequence.
+      last_sequence_ = LastFlushSequence();
+      ROCKS_LOG_INFO(db_options_->info_log,
+                     "Reset last_sequence to last_flush_sequence: %lu",
+                     (unsigned long) last_sequence_);
+    }
 
     for (auto cfd : *column_family_set_) {
       if (cfd->IsDropped()) {

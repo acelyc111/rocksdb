@@ -18,7 +18,7 @@ namespace rocksdb {
 class SstFileReader {
  public:
   explicit SstFileReader(const std::string& file_name, bool verify_checksum,
-                         bool output_hex);
+                         bool output_hex, bool pegasus_data);
 
   Status ReadSequential(bool print_kv, uint64_t read_num, bool has_from,
                         const std::string& from_key, bool has_to,

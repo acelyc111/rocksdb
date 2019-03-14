@@ -911,6 +911,7 @@ class MemTableInserter : public WriteBatch::Handler {
   bool seq_per_batch_;
   // Whether the memtable write will be done only after the commit
   bool write_after_commit_;
+  bool pegasus_data_;
 
   MemPostInfoMap& GetPostMap() {
     assert(concurrent_memtable_writes_);
@@ -929,7 +930,9 @@ class MemTableInserter : public WriteBatch::Handler {
                    uint64_t recovering_log_number, DB* db,
                    bool concurrent_memtable_writes,
                    uint64_t decree,
-                   bool* has_valid_writes = nullptr, bool seq_per_batch = false)
+                   bool* has_valid_writes = nullptr,
+                   bool seq_per_batch = false,
+                   bool pegasus_data = false)
       : sequence_(_sequence),
         cf_mems_(cf_mems),
         decree_(decree),
@@ -946,7 +949,8 @@ class MemTableInserter : public WriteBatch::Handler {
         // Write after commit currently uses one seq per key (instead of per
         // batch). So seq_per_batch being false indicates write_after_commit
         // approach.
-        write_after_commit_(!seq_per_batch) {
+        write_after_commit_(!seq_per_batch),
+        pegasus_data_(pegasus_data) {
     assert(cf_mems_);
   }
 
@@ -1089,8 +1093,9 @@ class MemTableInserter : public WriteBatch::Handler {
     // Since all Puts are logged in transaction logs (if enabled), always bump
     // sequence number. Even if the update eventually fails and does not result
     // in memtable add/update.
-    // TODO add option to call UpdateLastSeqDecree
-    //mem->UpdateLastSeqDecree(sequence_, decree_);
+    if (pegasus_data_) {
+      mem->UpdateLastSeqDecree(sequence_, decree_);
+    }
     MaybeAdvanceSeq();
     CheckMemtableFull();
     return Status::OK();
@@ -1106,8 +1111,9 @@ class MemTableInserter : public WriteBatch::Handler {
     MemTable* mem = cf_mems_->GetMemTable();
     mem->Add(sequence_, delete_type, key, value, concurrent_memtable_writes_,
              get_post_process_info(mem));
-    // TODO add option to call UpdateLastSeqDecree
-//    mem->UpdateLastSeqDecree(sequence_, decree_);
+    if (pegasus_data_) {
+      mem->UpdateLastSeqDecree(sequence_, decree_);
+    }
     MaybeAdvanceSeq();
     CheckMemtableFull();
     return Status::OK();
@@ -1265,9 +1271,9 @@ class MemTableInserter : public WriteBatch::Handler {
       // Add merge operator to memtable
       mem->Add(sequence_, kTypeMerge, key, value);
     }
-
-    // TODO add option to call UpdateLastSeqDecree
-//    mem->UpdateLastSeqDecree(sequence_, decree_);
+    if (pegasus_data_) {
+      mem->UpdateLastSeqDecree(sequence_, decree_);
+    }
     MaybeAdvanceSeq();
     CheckMemtableFull();
     return Status::OK();
@@ -1431,11 +1437,11 @@ Status WriteBatchInternal::InsertInto(
     ColumnFamilyMemTables* memtables, FlushScheduler* flush_scheduler,
     bool ignore_missing_column_families, uint64_t recovery_log_number, DB* db,
     bool concurrent_memtable_writes, bool seq_per_batch,
-    uint64_t decree) {
+    uint64_t decree, bool pegasus_data) {
   MemTableInserter inserter(sequence, memtables, flush_scheduler,
                             ignore_missing_column_families, recovery_log_number,
                             db, concurrent_memtable_writes, decree,
-                            nullptr /*has_valid_writes*/, seq_per_batch);
+                            nullptr /*has_valid_writes*/, seq_per_batch, pegasus_data);
   for (auto w : write_group) {
     if (!w->ShouldWriteToMemtable()) {
       w->sequence = inserter.sequence();
@@ -1457,12 +1463,11 @@ Status WriteBatchInternal::InsertInto(
     WriteThread::Writer* writer, SequenceNumber sequence,
     ColumnFamilyMemTables* memtables, FlushScheduler* flush_scheduler,
     bool ignore_missing_column_families, uint64_t log_number, DB* db,
-    bool concurrent_memtable_writes, bool seq_per_batch,
-    uint64_t decree) {
+    bool concurrent_memtable_writes, bool seq_per_batch) {
   assert(writer->ShouldWriteToMemtable());
   MemTableInserter inserter(sequence, memtables, flush_scheduler,
                             ignore_missing_column_families, log_number, db,
-                            concurrent_memtable_writes, decree,
+                            concurrent_memtable_writes, 0 /* decree */,
                             nullptr /*has_valid_writes*/, seq_per_batch);
   SetSequence(writer->batch, sequence);
   inserter.set_log_number_ref(writer->log_ref);
@@ -1477,11 +1482,10 @@ Status WriteBatchInternal::InsertInto(
     const WriteBatch* batch, ColumnFamilyMemTables* memtables,
     FlushScheduler* flush_scheduler, bool ignore_missing_column_families,
     uint64_t log_number, DB* db, bool concurrent_memtable_writes,
-    SequenceNumber* next_seq, bool* has_valid_writes, bool seq_per_batch,
-    uint64_t decree) {
+    SequenceNumber* next_seq, bool* has_valid_writes, bool seq_per_batch) {
   MemTableInserter inserter(Sequence(batch), memtables, flush_scheduler,
                             ignore_missing_column_families, log_number, db,
-                            concurrent_memtable_writes, decree, has_valid_writes,
+                            concurrent_memtable_writes, 0 /* decree */, has_valid_writes,
                             seq_per_batch);
   Status s = batch->Iterate(&inserter);
   if (next_seq != nullptr) {

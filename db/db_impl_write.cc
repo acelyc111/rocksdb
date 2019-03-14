@@ -278,7 +278,7 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
       }
     }
     assert(last_sequence != kMaxSequenceNumber);
-	// write_options.given_sequence_number  ????
+    // write_options.given_sequence_number
     const SequenceNumber current_sequence = write_options.given_sequence_number == 0 ?
                                             (last_sequence + 1) : write_options.given_sequence_number;
     last_sequence = current_sequence + seq_inc - 1;
@@ -293,7 +293,7 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
             write_group, current_sequence, column_family_memtables_.get(),
             &flush_scheduler_, write_options.ignore_missing_column_families,
             0 /*recovery_log_number*/, this, parallel, seq_per_batch_,
-            write_options.given_decree);
+            write_options.given_decree, pegasus_data_);
       } else {
         SequenceNumber next_sequence = current_sequence;
         for (auto* writer : write_group) {

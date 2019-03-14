@@ -607,15 +607,6 @@ else()
   set(SYSTEM_LIBS ${CMAKE_THREAD_LIBS_INIT} rt)
   set(LIBS ${ROCKSDB_STATIC_LIB} ${THIRDPARTY_LIBS} ${SYSTEM_LIBS})
 
-#  add_library(${ROCKSDB_SHARED_LIB} SHARED ${SOURCES})
-#  target_link_libraries(${ROCKSDB_SHARED_LIB}
-#    ${THIRDPARTY_LIBS} ${SYSTEM_LIBS})
-#  set_target_properties(${ROCKSDB_SHARED_LIB} PROPERTIES
-#                        LINKER_LANGUAGE CXX
-#                        VERSION ${ROCKSDB_VERSION}
-#                        SOVERSION ${ROCKSDB_VERSION_MAJOR}
-#                        CXX_STANDARD 11
-#                        OUTPUT_NAME "rocksdb")
 endif()
 
 option(WITH_LIBRADOS "Build with librados" OFF)
@@ -688,15 +679,6 @@ if(NOT WIN32 OR ROCKSDB_INSTALL_ON_WINDOWS)
     ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
     INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
   )
-
-#  install(
-#    TARGETS ${ROCKSDB_SHARED_LIB}
-#    EXPORT RocksDBTargets
-#    COMPONENT runtime
-#    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
-#    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-#    INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
-#  )
 
   install(
     EXPORT RocksDBTargets
